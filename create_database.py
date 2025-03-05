@@ -6,7 +6,7 @@ from langchain_community.vectorstores import Chroma
 from dotenv import load_dotenv
 import os
 import shutil
-from typing import List  # Import List for type hinting in Python 3.8
+from typing import List
 
 # Load environment variables. Assumes that project contains .env file with API keys
 load_dotenv()
@@ -17,14 +17,23 @@ DATA_PATH = "data/books"  # This is where your markdown file (e.g., alice_in_won
 # Use a Hugging Face model for embeddings
 embedding_model = SentenceTransformer('all-MiniLM-L6-v2')  # You can replace this with your preferred Hugging Face model
 
+# Define a wrapper class for the embedding function
+class SentenceTransformerEmbeddings:
+    def __init__(self, model):
+        self.model = model
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        # Generate embeddings using SentenceTransformer
+        embeddings = self.model.encode(texts, show_progress_bar=True)
+        return embeddings.tolist()
+
 def main():
     generate_data_store()
 
 def generate_data_store():
     documents = load_documents()
     chunks = split_text(documents)
-    embeddings = embed_documents(chunks)
-    save_to_chroma(chunks, embeddings)
+    save_to_chroma(chunks)
 
 def load_documents():
     # This will load the .md file from the specified directory
@@ -33,7 +42,7 @@ def load_documents():
     print(f"Loaded {len(documents)} documents.")
     return documents
 
-def split_text(documents: List[Document]):  # Use List from typing for type hinting
+def split_text(documents: List[Document]):
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=300,
         chunk_overlap=100,
@@ -43,23 +52,20 @@ def split_text(documents: List[Document]):  # Use List from typing for type hint
     chunks = text_splitter.split_documents(documents)
     print(f"Split {len(documents)} documents into {len(chunks)} chunks.")
 
-    # Display a sample chunk for inspection
-    document = chunks[10]  # This is just to check a chunk's content
-    print(f"Sample chunk:\n{document.page_content}")
-    print(f"Metadata: {document.metadata}")
+    
+    # document = chunks[10]  # This is just to check a chunk's content
+    # print(f"Sample chunk:\n{document.page_content}")
+    # print(f"Metadata: {document.metadata}")
 
     return chunks
 
-def embed_documents(chunks: List[Document]):  # Use List from typing for type hinting
-    # Extract text from the chunks and generate embeddings using SentenceTransformer
-    texts = [chunk.page_content for chunk in chunks]
-    embeddings = embedding_model.encode(texts, show_progress_bar=True)
-    return embeddings
-
-def save_to_chroma(chunks: List[Document], embeddings):
+def save_to_chroma(chunks: List[Document]):
     # Clear out the database first.
     if os.path.exists(CHROMA_PATH):
         shutil.rmtree(CHROMA_PATH)
+
+    # Wrap the SentenceTransformer model in a class that provides the required interface
+    embeddings = SentenceTransformerEmbeddings(embedding_model)
 
     # Create a new DB from the documents and their embeddings
     db = Chroma.from_documents(
